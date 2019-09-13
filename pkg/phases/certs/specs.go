@@ -2,6 +2,7 @@ package certs
 
 import (
 	"crypto/x509"
+	"net"
 
 	certutil "k8s.io/client-go/util/cert"
 )
@@ -16,7 +17,16 @@ type certGroupSpec struct {
 	subCerts []certSpec
 }
 
-func getCertGroupSpecList() ([]certGroupSpec) {
+func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
+	apiserverAltNames, err := getAPIServerAltNames(cfg)
+	if err != nil {
+		return nil, err
+	}
+	etcdAltNames, err := getEtcdAltNames(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return []certGroupSpec{
 		// common kube
 		{
@@ -32,7 +42,9 @@ func getCertGroupSpecList() ([]certGroupSpec) {
 					config: certutil.Config{
 						CommonName: "kube-apiserver",
 						Usages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+						AltNames: apiserverAltNames,
 					},
+
 				},
 				{
 					name: "apiserver-kubelet-client",
@@ -77,6 +89,7 @@ func getCertGroupSpecList() ([]certGroupSpec) {
 					name: "etcd-server",
 					config: certutil.Config{
 						Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+						AltNames: etcdAltNames,
 					},
 				},
 				{
@@ -103,5 +116,48 @@ func getCertGroupSpecList() ([]certGroupSpec) {
 				},
 			},
 		},
+	}, nil
+}
+
+func getAPIServerAltNames(cfg Config) (certutil.AltNames, error){
+	//_, svcSubnet, err := net.ParseCIDR("")
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	//internalAPIServerVirtualIP, err := ipallocator.GetIndexedIP(svcSubnet, 1)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	altNames := certutil.AltNames{
+		DNSNames: []string{
+			"kubernetes",
+			"kubernetes.default",
+			"kubernetes.default.svc",
+			// TODO
+			//fmt.Sprintf("kubernetes.default.svc.%s", )
+		},
+		IPs: []net.IP{
+			// TODO
+			//internalAPIServerVirtualIP,
+			cfg.InternalAdvertiseAddress,
+			cfg.ExternalAdvertiseAddress,
+		},
 	}
+
+	return altNames, nil
+}
+
+// TODO
+func getEtcdAltNames(cfg Config) (certutil.AltNames, error){
+	ips := make([]net.IP, 0, len(cfg.Etcds))
+	return certutil.AltNames{
+		IPs: ips,
+	}, nil
+}
+
+// TODO
+func getEtcdPeerAltNames() {
+
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"net"
 	"time"
 
 	certutil "k8s.io/client-go/util/cert"
@@ -23,12 +24,22 @@ const (
 )
 
 type Config struct {
+	InternalAdvertiseAddress net.IP
+	ExternalAdvertiseAddress net.IP
+
+	Etcds map[string]net.IP
+
+	SvcNet net.IPNet
 }
 
 // TODO more log and config struct define
 func CreatePKIAssets(cfg Config) (map[string][]byte, error) {
+	certGroupSpecList, err := getCertGroupSpecList(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	pkis := map[string][]byte{}
-	certGroupSpecList := getCertGroupSpecList()
 	for _, vcertGroupSpec := range certGroupSpecList {
 		caKey, caCert, err := newCaPrivateKeyAndCert(vcertGroupSpec.ca.config)
 		if err != nil {
@@ -82,7 +93,7 @@ func newCert(cfg certutil.Config, key crypto.Signer, caCert *x509.Certificate, c
 		IPAddresses: cfg.AltNames.IPs,
 		SerialNumber: serial,
 		NotBefore: caCert.NotBefore,
-		// time limit
+		// TODO time limit
 		NotAfter: time.Now().Add(368 * 100 * time.Hour).UTC(),
 		KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: cfg.Usages,
