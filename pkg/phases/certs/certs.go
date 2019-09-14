@@ -2,8 +2,8 @@ package certs
 
 import (
 	"crypto"
-	"crypto/rsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -18,7 +18,7 @@ import (
 
 const (
 	rsaPrivateKeyBlockType = "RSA PRIVATE KEY"
-  certificateBlockType = "CERTIFICATE"
+	certificateBlockType   = "CERTIFICATE"
 
 	rsaKeySize = 2048
 )
@@ -70,7 +70,7 @@ func CreatePKIAssets(cfg Config) (map[string][]byte, error) {
 	return pkis, nil
 }
 
-func newPrivateKey() (crypto.Signer, error){
+func newPrivateKey() (crypto.Signer, error) {
 	return rsa.GenerateKey(rand.Reader, rsaKeySize)
 }
 
@@ -86,16 +86,16 @@ func newCert(cfg certutil.Config, key crypto.Signer, caCert *x509.Certificate, c
 
 	certTmpl := x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: cfg.CommonName,
+			CommonName:   cfg.CommonName,
 			Organization: cfg.Organization,
 		},
-		DNSNames: cfg.AltNames.DNSNames,
-		IPAddresses: cfg.AltNames.IPs,
+		DNSNames:     cfg.AltNames.DNSNames,
+		IPAddresses:  cfg.AltNames.IPs,
 		SerialNumber: serial,
-		NotBefore: caCert.NotBefore,
+		NotBefore:    caCert.NotBefore,
 		// TODO time limit
-		NotAfter: time.Now().Add(368 * 100 * time.Hour).UTC(),
-		KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		NotAfter:    time.Now().Add(368 * 100 * time.Hour).UTC(),
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: cfg.Usages,
 	}
 	certDERBytes, err := x509.CreateCertificate(rand.Reader, &certTmpl, caCert, key.Public(), caKey)
@@ -105,7 +105,7 @@ func newCert(cfg certutil.Config, key crypto.Signer, caCert *x509.Certificate, c
 	return x509.ParseCertificate(certDERBytes)
 }
 
-func newCaPrivateKeyAndCert(cfg certutil.Config) ( crypto.Signer, *x509.Certificate,error) {
+func newCaPrivateKeyAndCert(cfg certutil.Config) (crypto.Signer, *x509.Certificate, error) {
 	key, err := newPrivateKey()
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +118,7 @@ func newCaPrivateKeyAndCert(cfg certutil.Config) ( crypto.Signer, *x509.Certific
 	return key, cert, nil
 }
 
-func newPrivateKeyAndCert(cfg certutil.Config, caKey crypto.Signer,  caCert *x509.Certificate) ( crypto.Signer,  *x509.Certificate, error) {
+func newPrivateKeyAndCert(cfg certutil.Config, caKey crypto.Signer, caCert *x509.Certificate) (crypto.Signer, *x509.Certificate, error) {
 	key, err := newPrivateKey()
 	if err != nil {
 		return nil, nil, err
@@ -128,7 +128,7 @@ func newPrivateKeyAndCert(cfg certutil.Config, caKey crypto.Signer,  caCert *x50
 		return nil, nil, err
 	}
 
-	return  key, cert, nil
+	return key, cert, nil
 }
 
 func encodeKeyAndCertPEM(key crypto.Signer, cert *x509.Certificate) ([]byte, []byte, error) {
@@ -138,13 +138,13 @@ func encodeKeyAndCertPEM(key crypto.Signer, cert *x509.Certificate) ([]byte, []b
 		return nil, nil, errors.New("not rsa private key")
 	}
 	keyBlock := &pem.Block{
-		Type: rsaPrivateKeyBlockType,
+		Type:  rsaPrivateKeyBlockType,
 		Bytes: x509.MarshalPKCS1PrivateKey(rsaKey),
 	}
 	keyByte := pem.EncodeToMemory(keyBlock)
 
 	certBlock := &pem.Block{
-		Type: certificateBlockType,
+		Type:  certificateBlockType,
 		Bytes: cert.Raw,
 	}
 	certByte := pem.EncodeToMemory(certBlock)

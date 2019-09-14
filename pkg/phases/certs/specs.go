@@ -8,12 +8,12 @@ import (
 )
 
 type certSpec struct {
-	name string
+	name   string
 	config certutil.Config
 }
 
 type certGroupSpec struct {
-	ca certSpec
+	ca       certSpec
 	subCerts []certSpec
 }
 
@@ -41,10 +41,9 @@ func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
 					name: "apiserver",
 					config: certutil.Config{
 						CommonName: "kube-apiserver",
-						Usages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-						AltNames: apiserverAltNames,
+						Usages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+						AltNames:   apiserverAltNames,
 					},
-
 				},
 				{
 					name: "apiserver-kubelet-client",
@@ -60,17 +59,17 @@ func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
 		// front-proxy
 		{
 			ca: certSpec{
-					name: "front-proxy-ca",
-					config: certutil.Config{
-						CommonName:   "front-proxy-ca",
-					},
+				name: "front-proxy-ca",
+				config: certutil.Config{
+					CommonName: "front-proxy-ca",
+				},
 			},
 			subCerts: []certSpec{
 				{
 					name: "front-proxy-client",
 					config: certutil.Config{
 						CommonName: "front-proxy-client",
-						Usages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+						Usages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 					},
 				},
 			},
@@ -81,14 +80,14 @@ func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
 			ca: certSpec{
 				name: "etcd-ca",
 				config: certutil.Config{
-					CommonName:   "etcd-ca",
+					CommonName: "etcd-ca",
 				},
 			},
 			subCerts: []certSpec{
 				{
 					name: "etcd-server",
 					config: certutil.Config{
-						Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+						Usages:   []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 						AltNames: etcdAltNames,
 					},
 				},
@@ -109,9 +108,9 @@ func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
 				{
 					name: "apiserver-etcd-client",
 					config: certutil.Config{
-						CommonName: "kube-apiserver-etcd-client",
-						Organization:  []string{"system:masters"},
-						Usages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+						CommonName:   "kube-apiserver-etcd-client",
+						Organization: []string{"system:masters"},
+						Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 					},
 				},
 			},
@@ -119,7 +118,7 @@ func getCertGroupSpecList(cfg Config) ([]certGroupSpec, error) {
 	}, nil
 }
 
-func getAPIServerAltNames(cfg Config) (certutil.AltNames, error){
+func getAPIServerAltNames(cfg Config) (certutil.AltNames, error) {
 	//_, svcSubnet, err := net.ParseCIDR("")
 	//if err != nil {
 	//	return nil, err
@@ -150,7 +149,7 @@ func getAPIServerAltNames(cfg Config) (certutil.AltNames, error){
 }
 
 // TODO
-func getEtcdAltNames(cfg Config) (certutil.AltNames, error){
+func getEtcdAltNames(cfg Config) (certutil.AltNames, error) {
 	ips := make([]net.IP, 0, len(cfg.Etcds))
 	return certutil.AltNames{
 		IPs: ips,

@@ -2,11 +2,34 @@ package manifests
 
 import (
 	"fmt"
+	"github.com/n1ce37/kubeadm/pkg/util/maps"
+	"net"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/n1ce37/kubeadm/pkg/constants"
 )
+
+const (
+	etcdClientPort          = 2379
+	etcdPeerPort            = 2380
+	etcdInitialClusterToken = "kube-etcd-cluster"
+)
+
+type Config struct {
+	AdvertiseAddress string
+	Machines         map[string]net.IP
+
+	SvcNet net.IPNet
+
+	CertDir string
+	ConfDir string
+}
 
 func GetManifests() map[string][]byte {
 	apiserverPod := buildPod(getAPIServerContainer())
@@ -14,82 +37,121 @@ func GetManifests() map[string][]byte {
 	return nil
 }
 
-func getEtcdContainers() []v1.Container {
-	args := map[string]string{
-		"name": fmt.Sprint("etcd-%s", "ip"),
-		"listen-client-urls": fmt.Sprintf("%s,%s", "", ""),
-		"advertise-client-urls":       "",
-		"listen-peer-urls":            "",
-		"initial-advertise-peer-urls": "",
-		"data-dir":                    "",
-		"cert-file":                   "",
-		"key-file":                    "",
-		"trusted-ca-file":             "",
-		"client-cert-auth":            "true",
-		"peer-cert-file":              "",
-		"peer-key-file":               "",
-		"peer-trusted-ca-file":        "",
-		"peer-client-cert-auth":       "true",
-		"snapshot-count":              "10000",
-		"listen-metrics-urls":         fmt.Sprintf("http://127.0.0.1:%d", ""),
+func getEtcdContainers(cfg Config) map[string]v1.Container {
+	// https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/configuration.md
+	baseArgs := map[string]string{
+		"data-dir":              constants.EtcdDataDir,
+		"initial-cluster-token": etcdInitialClusterToken,
+		"cert-file":             filepath.Join(cfg.CertDir, constants.EtcdServerCert),
+		"key-file":              filepath.Join(cfg.CertDir, constants.EtcdServerKey),
+		"trusted-ca-file":       filepath.Join(cfg.CertDir, constants.EtcdCACert),
+		"client-cert-auth":      "true",
+		"peer-cert-file":        filepath.Join(cfg.CertDir, constants.EtcdPeerCert),
+		"peer-key-file":         filepath.Join(cfg.CertDir, constants.EtcdPeerKey),
+		"peer-trusted-ca-file":  filepath.Join(cfg.CertDir, constants.EtcdCACert),
+		"peer-client-cert-auth": "true",
+		"initial-cluster-state": "new",
 	}
 
-	//return v1.Container{
-	//	TODO constants
-		//Name: "etcd",
-		//Image: "",
-		//Command:buildCommand("etcd", args),
-	//}
-	return []v1.Container{}
+	containers := make(map[string]v1.Container, len(cfg.Machines))
+	for k, v := range cfg.Machines {
+		args := maps.DeepCopy(baseArgs)
+		args["name"] = k
+		args["initial-advertise-peer-urls"] = getEtcdPeerURL(v)
+		args["listen-peer-urls"] = getEtcdPeerURL(v)
+		args["listen-client-urls"] = getEtcdClientURL(v)
+		args["advertise-client-urls"] = getEtcdClientURL(v)
+		args["initial-cluster"] = getEtcdInitialCluster(cfg.Machines)
+		containers[k] = v1.Container{
+			Name:    constants.Etcd,
+			Command: buildCommand(constants.Etcd, args),
+		}
+	}
+
+	return containers
 }
 
-func getAPIServerContainer() v1.Container {
+func getAPIServerContainer(cfg Config) v1.Container {
+	// https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/
 	args := map[string]string{
-		"advertise-address": "xx",
-		"insecure-port": "0",
-		"enable-admisson-plugins": "",
-		"service-cluster-ip-range": "",
-		"client-ca-file": "",
-		"tls-cert-file": "",
-		"tls-private-key-file": "",
-		"kubelet-client-certificate": "",
-		"kubelet-client-key": "",
-		"secret-port": "",
-		"allow-privileged": "true",
-		"kubelet-preferred-address-types": "",
+		"advertise-address":        cfg.AdvertiseAddress,
+		"allowed-privileged":       "true",
+		"anonymous-auth":           "false",
+		"apiserver-count":          strconv.Itoa(len(cfg.Machines)),
+		"enable-admission-plugins": "NodeRestriction",
+		"service-cluster-ip-range": cfg.SvcNet.String(),
+		// TODO constants
+		"client-ca-file":             filepath.Join(cfg.CertDir, "sa.pub"),
+		"tls-cert-file":              filepath.Join(cfg.CertDir, "apiserver.crt"),
+		"tls-private-key-file":       filepath.Join(cfg.CertDir, "apiserver.key"),
+		"kubelet-client-certificate": filepath.Join(cfg.CertDir, "apiserver-kubelet-client.crt"),
+		"kubelet-client-key":         filepath.Join(cfg.CertDir, "apiserver-kubelet-client.key"),
+		"secret-port":                        strconv.Itoa(constants.APIServerPort),
+		"kubelet-preferred-address-types":    "InternalIP,ExternalIP,Hostname",
 		"requestheader-username-headers":     "X-Remote-User",
 		"requestheader-group-headers":        "X-Remote-Group",
 		"requestheader-extra-headers-prefix": "X-Remote-Extra-",
-		"requestheader-client-ca-file":       "",
+		"requestheader-client-ca-file":       filepath.Join(cfg.CertDir, "front-proxy-ca.crt"),
 		"requestheader-allowed-names":        "front-proxy-client",
-		"proxy-client-cert-file":             "",
-		"proxy-client-key-file":"",
+		"proxy-client-cert-file":             "front-proxy-client.crt",
+		"proxy-client-key-file":              "front-proxy-client.key",
 	}
 
 	return v1.Container{
-		Name: "kube-apiserver",
-		Command: buildCommand("", args),
-	}
-}
-
-func getControllerManagerContainer() v1.Container {
-	return v1.Container{
-		Name: "kube-controller-manager",
+		Name:    constants.KubeAPIServer,
+		Command: buildCommand(constants.KubeAPIServer, args),
 	}
 }
 
-func getSchedulerContainer() v1.Container {
+func getControllerManagerContainer(cfg Config) v1.Container {
+	// https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/
+	kubeConf := filepath.Join(cfg.ConfDir, constants.GetKubeConf(constants.KubeControllerManager)
+	args := map[string]string{
+		"leader-elect":                     "true",
+		"kubeconfig":                       kubeConf,
+		"authentication-kubeconfig":        kubeConf,
+		"authorization-kubeconfig":         kubeConf,
+		"client-ca-file":                   filepath.Join(cfg.CertDir, constants.CACert),
+		"requestheader-client-ca-file":     filepath.Join(cfg.CertDir, constants.FrontProxyCert),
+		"root-ca-file":                     filepath.Join(cfg.CertDir, constants.CACert),
+		"service-account-private-key-file": filepath.Join(cfg.CertDir, constants.ServiceAccountPrivateKey),
+		"cluster-signing-cert-file":        filepath.Join(cfg.CertDir, constants.CACert),
+		"cluster-signing-key-file":         filepath.Join(cfg.CertDir, constants.CACert),
+		"use-service-account-credentials":  "true",
+		"controllers":                      "*,bootstrapsigner,tokencleaner",
+	}
+
 	return v1.Container{
-		Name: "kube-scheduler",
+		Name:    constants.KubeControllerManager,
+		Command: buildCommand(constants.KubeControllerManager, args),
+	}
+}
+
+func getSchedulerContainer(cfg Config) v1.Container {
+	kubeConf := filepath.Join(cfg.ConfDir, constants.GetKubeConf(constants.KubeScheduler))
+	args := map[string]string{
+		"leader-elect":              "true",
+		"kubeconfig":                kubeConf,
+		"authentication-kubeconfig": kubeConf,
+		"authorization-kubeconfig":  kubeConf,
+	}
+	return v1.Container{
+		Name:    constants.KubeScheduler,
+		Command: buildCommand(constants.KubeScheduler, args),
 	}
 }
 
 func buildCommand(baseCommand string, args map[string]string) []string {
-	command := make([]string, 0, len(args)+1)
+	keys := make([]string, 0, len(args))
+	for k, _ := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 
+	command := make([]string, 0, len(args)+1)
 	command = append(command, baseCommand)
-	for k, v := range args {
-		command = append(command, fmt.Sprintf("--%s=%s", k, v))
+	for _, v := range keys {
+		command = append(command, fmt.Sprintf("--%s=%s", v, args[v]))
 	}
 
 	return command
@@ -97,21 +159,39 @@ func buildCommand(baseCommand string, args map[string]string) []string {
 
 func buildPod(container v1.Container) v1.Pod {
 	return v1.Pod{
-		TypeMeta:   metav1.TypeMeta{
+		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
-			Kind: "Pod",
+			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:                       container.Name,
+			Name:      container.Name,
 			Namespace: metav1.NamespaceSystem,
-			Labels: map[string]string{"component": container.Name},
+			Labels:    map[string]string{"component": container.Name},
 		},
-		Spec:       v1.PodSpec{
-			Containers: []v1.Container{container},
+		Spec: v1.PodSpec{
+			Containers:        []v1.Container{container},
 			PriorityClassName: "system-cluster-critical",
-			HostNetwork: true,
+			HostNetwork:       true,
 			// TODO
 			//Volumes: []
 		},
 	}
+}
+
+func getEtcdClientURL(ip net.IP) string {
+	return fmt.Sprintf("https://%s:%s", ip.String(), strconv.Itoa(etcdClientPort))
+}
+
+func getEtcdPeerURL(ip net.IP) string {
+	return fmt.Sprintf("https://%s:%s", ip.String(), strconv.Itoa(etcdPeerPort))
+}
+
+func getEtcdInitialCluster(machines map[string]net.IP) string {
+	nodes := make([]string, 0, len(machines))
+
+	for k, v := range machines {
+		nodes = append(nodes, fmt.Sprintf("%s=%s", k, getEtcdPeerURL(v)))
+	}
+
+	return strings.Join(nodes, ",")
 }
